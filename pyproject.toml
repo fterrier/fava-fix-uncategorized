@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fava-fix-uncategorized"
+version = "0.1.0"
+description = "A Fava plugin to fix uncategorized transactions in beancount files"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+readme = "README.md"
+license = {text = "GPL-2.0"}
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: GNU General Public License v2 (GPLv2)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Office/Business :: Financial :: Accounting",
+]
+dependencies = [
+    "fava>=1.30.0",
+    "beancount>=3.0.0",
+    "flask",
+]
+
+[project.urls]
+Homepage = "https://github.com/fterrier/fava-fix-uncategorized"
+Repository = "https://github.com/fterrier/fava-fix-uncategorized"
+Issues = "https://github.com/fterrier/fava-fix-uncategorized/issues"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov",
+    "playwright",
+    "pytest-playwright",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"fava_fix_uncategorized" = ["templates/*.html", "*.js"]

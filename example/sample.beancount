@@ -1,0 +1,19 @@
+plugin "fava_fix_uncategorized"
+
+1990-01-01 open Assets:Checking
+1990-01-01 open Expenses:Family:Unclassified
+1990-01-01 open Expenses:Family:Groceries
+1990-01-01 open Expenses:Family:Restaurants
+1990-01-01 open Income:Salary
+
+2024-01-01 * "Grocery Store" "Weekly groceries"
+  Assets:Checking              -150.00 CHF
+  Expenses:Family:Unclassified  150.00 CHF
+
+2024-01-02 * "Restaurant" "Dinner out"
+  Assets:Checking              -80.50 CHF
+  Expenses:Family:Unclassified  80.50 CHF
+
+2024-01-03 * "Salary Payment"
+  Assets:Checking             2500.00 CHF
+  Income:Salary              -2500.00 CHF

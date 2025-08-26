@@ -1,0 +1,369 @@
+<!doctype html>
+<html>
+  <head>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.css">
+    <!-- This is loaded via JS -->
+    <!-- <script src="https://cdnjs.cloudflare.com/ajax/libs/awesomplete/1.1.5/awesomplete.min.js"></script> -->
+
+    <title>Fix Uncategorized</title>
+
+    <style>
+      /* Container for the whole extension page */
+      .hidden {
+        display: none;
+      }
+
+      article {
+        padding-top: 0px;
+        margin-top: 1.5em;
+      }
+
+      .top-bar {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5em 1em;
+        border-bottom: 1px solid #ccc;
+        background-color: #ffffff;
+        color: #000000;
+      }
+
+      /* Save Button Styling */
+      #save-all-btn {
+        padding: 6px 12px;
+        font-size: 0.9em;
+        background: none;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        cursor: pointer;
+        user-select: none;
+        line-height: 1;
+        text-align: center;
+        background-color: #ffffff;
+        color: #000000;
+      }
+
+      #save-all-btn:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      /* Dark mode support */
+      @media (prefers-color-scheme: dark) {
+        .top-bar {
+          background-color: #1e1e1e;
+          color: #f0f0f0;
+          border-bottom: 1px solid #444;
+        }
+
+        #save-all-btn {
+          background-color: #1e1e1e;
+          color: #f0f0f0;
+          border: 1px solid #444;
+        }
+
+        #save-all-btn:hover {
+          background-color: rgba(255, 255, 255, 0.08);
+        }
+      }
+
+      #txn-list.saving {
+        pointer-events: none;
+        opacity: 0.5;
+        position: relative;
+      }
+       
+      .txn-block {
+        margin: 1em 0;
+        padding: 1em;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        position: relative;
+      }
+
+      .txn-header {
+        position: absolute;
+        top: 0px;
+        right: 8px;
+        text-align: right;
+      }
+      
+      .txn-lineno {
+        font-size: 0.75rem;
+        font-weight: normal;
+        opacity: 0.6;
+        color: var(--fg-muted, #666);
+        pointer-events: none; /* avoid interfering with clicks */
+      }
+
+      .txn-error-message {
+        font-size: 0.75rem;
+        margin-top: 2px;
+        display: block;
+        color: #b85c00; /* pastel orange */
+        background-color: rgba(255, 165, 0, 0.1);
+        padding: 2px 6px;
+        border-radius: 4px;
+        max-width: 300px;
+        word-wrap: break-word;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .txn-error-message {
+          color: #ffb347; /* lighter pastel orange */
+          background-color: rgba(255, 165, 0, 0.15);
+        }
+      }
+
+      .txn-title {
+        font-weight: bold;
+        margin-bottom: 0.5em;
+      }
+
+      /* Table styling */
+      .txn-splits-table {
+        width: 100%;
+        max-width: 60em;
+        border-collapse: collapse;
+        margin-top: 0.5em;
+      }
+
+      .txn-block.txn-modified .txn-title {
+        font-style: italic;
+      }
+
+      .txn-block.txn-modified .txn-title::after {
+        content: "✏️";
+        margin-left: 0.5rem;
+        font-size: 0.9em;
+        vertical-align: middle;
+        opacity: 0.8;
+      }
+
+      /* Highlight empty transactions */
+      .txn-block.empty-txn {
+        border: 2px dashed var(--color-warning, #f0ad4e); /* pastel orange */
+        border-radius: 8px;
+        background-color: rgba(240, 173, 78, 0.1); /* subtle orange tint */
+        transition: background-color 0.3s, border-color 0.3s;
+      }
+
+      /* Optional: add slight hover effect */
+      .txn-block.empty-txn:hover {
+        background-color: rgba(240, 173, 78, 0.2);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .empty-txn {
+          border-color: var(--color-warning, #ffb74d);
+          background-color: rgba(255, 183, 77, 0.15);
+        }
+      }
+
+      /* Highlight error transactions */
+      .txn-block.error {
+        border: 2px dashed var(--color-error, #d33);
+        border-radius: 8px;
+        background-color: rgba(220, 53, 69, 0.1); /* subtle red tint */
+        transition: background-color 0.3s, border-color 0.3s;
+      }
+
+      /* Optional: add slight hover effect */
+      .txn-block.error:hover {
+        background-color: rgba(220, 53, 69, 0.2);
+      }
+
+      @media (prefers-color-scheme: dark) {
+        .error {
+          border-color: var(--color-error, #ff6b6b);
+          background-color: rgba(255, 107, 107, 0.15);
+        }
+      }
+    
+      .txn-splits-table thead {
+        display: none;
+      }
+
+      .txn-splits-table td {
+        padding: 4px;
+        vertical-align: middle;
+      }
+
+      .posting-row input[type="text"] {
+        width: 100%;
+        padding: 4px;
+        box-sizing: border-box;
+      }
+
+      /* Column widths */
+      .account-col div {
+        width: 100%;
+      }
+
+      .account-col .awesomplete ul > li {
+        background-color: inherit;
+      }
+
+      .amount-col {
+        white-space: nowrap;
+        width: 30%;
+        min-width: 5em;
+      }
+
+      .actions-col {
+        white-space: nowrap;
+        width: 1%;
+        border: none;
+      }
+
+      /* Button container layout */
+      .row-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        justify-content: flex-end;
+      }
+
+      .move-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+
+      /* Buttons */
+      .row-controls button {
+        padding: 2px 6px;
+        font-size: 0.85em;
+        background: none;
+        border: 1px solid #ccc;
+        border-radius: 3px;
+        cursor: pointer;
+        user-select: none;
+        min-width: 28px;
+        line-height: 1;
+        text-align: center;
+      }
+
+      .row-controls button:hover {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      @media (prefers-color-scheme: light) {
+
+        .row-controls button {
+          border-color: #ccc;
+          color: #000;
+        }
+
+        .row-controls button:hover {
+          background-color: rgba(0, 0, 0, 0.05);
+        }
+      }
+
+      @media (prefers-color-scheme: dark) {
+
+        .txn-block {
+          border: 1px solid #444;
+          background-color: #1e1e1e;
+        }
+
+        .row-controls button {
+          border-color: #555;
+          color: #e0e0e0;
+        }
+
+        .row-controls button:hover {
+          background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .posting-row input[type="text"] {
+          background-color: #2a2a2a;
+          color: #e0e0e0;
+          border: 1px solid #444;
+        }
+
+        .posting-row input[type="text"]::placeholder {
+          color: #888;
+        }
+
+        .account-col .awesomplete ul > li {
+          background-color: #2a2a2a;
+          color: #e0e0e0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="top-bar">
+      <label>
+        <input type="checkbox" id="only-uncategorized" checked>
+        Only uncategorized
+      </label>
+      <button id="save-all-btn" class="btn btn-primary">Save all</button>
+    </div>
+    
+    <!-- Hidden select template -->
+    <input id="account-select-template" type="text" role="combobox" placeholder="Account" hidden="" class="hidden awesomplete expense-account-input" data-list="#expense-accounts-list"></input>
+
+    <ul role="listbox" hidden="" id="expense-accounts-list">
+      {% for acc in extension.expense_accounts() %}
+        <li role="option">{{ acc }}</li>
+      {% endfor %}
+    </ul>
+
+    <!-- Transaction list container -->
+    <div id="txn-list"></div>
+
+    <!-- posting row template -->
+    <template id="posting-row-template">
+      <tr class="posting-row">
+        <td class="account-col">
+          <input type="text" class="account-select expense-account-input" placeholder="Account (Expenses: or Income:)" />
+        </td>
+        <td class="amount-col">
+          <input type="text" class="expense-amount" placeholder="Amount (e.g. 103.55 CHF)" />
+        </td>
+        <td class="actions-col">
+          <div class="row-controls">
+            <div class="move-buttons">
+              <button type="button" class="move-up-btn" title="Move up">▲</button>
+              <button type="button" class="move-down-btn" title="Move down">▼</button>
+            </div>
+            <button type="button" class="add-below-btn" title="Add split">+</button>
+            <button type="button" class="delete-btn" title="Delete">🗑️</button>
+          </div>
+        </td>
+      </tr>
+    </template>
+
+    <!-- Transaction Template -->
+    <template id="txn-template">
+      <div class="txn-block">
+        <div class="txn-header">
+          <span class="txn-lineno"></span>
+          <span class="txn-error-message"></span>
+        </div>
+        <code class="txn-title"></code>
+
+        <!-- Original postings -->
+        <div class="txn-postings"></div>
+
+        <!-- Table for editable split postings -->
+        <table class="txn-splits-table" style="margin-top: 0.5em;">
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Amount</th>
+              <th></th> <!-- For buttons -->
+            </tr>
+          </thead>
+          <tbody class="txn-splits-body">
+            <!-- Populated via JS -->
+          </tbody>
+        </table>
+      </div>
+    </template>
+  </body>
+</html>
