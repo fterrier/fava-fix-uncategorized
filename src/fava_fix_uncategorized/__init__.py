@@ -141,7 +141,7 @@ class FixUncategorized(FavaExtensionBase):
 
             entry = self.ledger.get_entry(hash)
             if not entry:
-                raise FavaAPIException(f"Entry with hash {hash} not found")
+                raise FavaAPIError(f"Entry with hash {hash} not found")
 
             slice_string, sha256sum = get_entry_slice(entry)
             new_string = replace_unclassified_posting(slice_string, txn["postings"])
@@ -149,7 +149,7 @@ class FixUncategorized(FavaExtensionBase):
             try:
                 self.ledger.file.save_entry_slice(hash, new_string, sha256sum)
             except Exception as e:
-                raise FavaAPIException(f"Failed to save transaction at line {lineno}: {str(e)}")
+                raise FavaAPIError(f"Failed to save transaction at line {lineno}: {str(e)}")
 
             results.append({
                 "lineno": lineno,
@@ -172,11 +172,11 @@ class FixUncategorized(FavaExtensionBase):
             except Exception:
                 parsed_time = None
 
-        error_map = self._errors()
+        error_map = self._get_errors()
         entries = []
         # Iterate over all transactions, not just uncategorized
         for txn in self.ledger.all_entries_by_type.Transaction:
-            if not self._in_interval(txn, parsed_time):
+            if not self._is_in_interval(txn, parsed_time):
                 continue
             unclassified = self._has_uncategorized_posting(txn)
             entries.append({
@@ -195,11 +195,15 @@ class FixUncategorized(FavaExtensionBase):
                     for p in txn.postings
                     if p.account != "Expenses:Family:Unclassified"
                 ],
-                "unclassified": unclassified  # <-- new field
+                "unclassified": unclassified
             })
-        return jsonify(success=True, transactions=entries)
+        
+        # Include expense accounts in the response for frontend use
+        expense_accounts = self.expense_accounts()
+        
+        return jsonify(success=True, transactions=entries, expense_accounts=expense_accounts)
 
-    def _errors(self):
+    def _get_errors(self):
         error_map = {}
         for err in self.ledger.errors:
             if err.source is not None:
@@ -208,7 +212,7 @@ class FixUncategorized(FavaExtensionBase):
                     error_map.setdefault(lineno, []).append(err.message)
         return error_map
 
-    def _in_interval(self, txn, parsed_time):
+    def _is_in_interval(self, txn, parsed_time):
         """Return True if txn.date falls within the parsed_time interval.
 
         parsed_time: tuple (start_date, end_date)
