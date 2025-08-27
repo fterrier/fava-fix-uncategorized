@@ -102,8 +102,9 @@ class TestReplaceUnclassifiedPosting:
         new_postings = []
         result = replace_unclassified_posting(entry_str, new_postings)
         
+        # When no new postings provided, original should remain unchanged
         assert "Expenses:Family:Unclassified" in result
-        assert "0 CHF" not in result  # Should not add 0 CHF line when no new postings
+        assert result.strip() == entry_str.strip()
 
     def test_preserve_indentation(self):
         entry_str = """2024-01-01 * "Test"
@@ -122,8 +123,9 @@ class TestFixUncategorizedExtension:
     """Test the FixUncategorized extension class."""
 
     def setup_method(self):
-        self.extension = FixUncategorized()
-        self.extension.ledger = Mock()
+        mock_ledger = Mock()
+        self.extension = FixUncategorized(mock_ledger)
+        self.extension.ledger = mock_ledger
 
     def test_expense_accounts_filtering(self):
         # Mock the ledger accounts

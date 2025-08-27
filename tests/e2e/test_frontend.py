@@ -10,8 +10,8 @@ class TestFixUncategorizedFrontend:
         """Test that the Fix Uncategorized extension page loads."""
         page.goto(f"{fava_server}/extension/FixUncategorized/")
         
-        # Should see the page title
-        expect(page).to_have_title("Fix Uncategorized")
+        # Should see the page title (Fava adds " - Beancount" to extension titles)
+        expect(page).to_have_title("Fix Uncategorized - Beancount")
         
         # Should see the top bar with filter checkbox and save button
         expect(page.locator("#only-uncategorized")).to_be_visible()

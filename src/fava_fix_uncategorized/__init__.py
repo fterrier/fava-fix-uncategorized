@@ -239,5 +239,4 @@ class FixUncategorized(FavaExtensionBase):
             if posting.account == "Expenses:Family:Unclassified":
                 return True
         return False
-
-# __fava_extension__ = FixUncategorized
+    
