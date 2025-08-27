@@ -23,7 +23,7 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Accounting",
 ]
 dependencies = [
-    "fava>=1.29.0",
+    "fava>=1.30.0",
     "beancount>=3.0.0",
     "flask",
 ]
