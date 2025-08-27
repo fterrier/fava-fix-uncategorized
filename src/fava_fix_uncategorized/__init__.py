@@ -202,9 +202,10 @@ class FixUncategorized(FavaExtensionBase):
     def _errors(self):
         error_map = {}
         for err in self.ledger.errors:
-            lineno = err.source.get("lineno")
-            if lineno is not None:
-                error_map.setdefault(lineno, []).append(err.message)
+            if err.source is not None:
+                lineno = err.source.get("lineno")
+                if lineno is not None:
+                    error_map.setdefault(lineno, []).append(err.message)
         return error_map
 
     def _in_interval(self, txn, parsed_time):

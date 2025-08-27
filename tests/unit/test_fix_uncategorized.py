@@ -191,3 +191,67 @@ class TestFixUncategorizedExtension:
         parsed_time = (date(2024, 2, 1), date(2024, 2, 28))
         result = self.extension._in_interval(mock_txn, parsed_time)
         assert result is False
+
+    def test_errors_handles_none_source(self):
+        """Test that _errors() handles errors with None source attribute."""
+        # Mock errors with various source configurations
+        mock_error1 = Mock()
+        mock_error1.source = {"lineno": 10}
+        mock_error1.message = "Error with valid source"
+        
+        mock_error2 = Mock()
+        mock_error2.source = None  # This is the case that caused the 500 error
+        mock_error2.message = "Error with None source"
+        
+        mock_error3 = Mock()
+        mock_error3.source = {"lineno": 20}
+        mock_error3.message = "Another error with valid source"
+        
+        mock_error4 = Mock()
+        mock_error4.source = {}  # Empty dict, no lineno
+        mock_error4.message = "Error with empty source"
+        
+        self.extension.ledger.errors = [mock_error1, mock_error2, mock_error3, mock_error4]
+        
+        # This should not raise an AttributeError
+        error_map = self.extension._errors()
+        
+        # Should only include errors with valid lineno
+        assert error_map == {
+            10: ["Error with valid source"],
+            20: ["Another error with valid source"]
+        }
+        
+        # Errors with None source or missing lineno should be ignored
+        assert len(error_map) == 2
+
+    def test_errors_with_multiple_errors_same_line(self):
+        """Test that _errors() groups multiple errors for the same line."""
+        mock_error1 = Mock()
+        mock_error1.source = {"lineno": 15}
+        mock_error1.message = "First error on line 15"
+        
+        mock_error2 = Mock()
+        mock_error2.source = {"lineno": 15}
+        mock_error2.message = "Second error on line 15"
+        
+        mock_error3 = Mock()
+        mock_error3.source = {"lineno": 25}
+        mock_error3.message = "Error on line 25"
+        
+        self.extension.ledger.errors = [mock_error1, mock_error2, mock_error3]
+        
+        error_map = self.extension._errors()
+        
+        assert error_map == {
+            15: ["First error on line 15", "Second error on line 15"],
+            25: ["Error on line 25"]
+        }
+
+    def test_errors_with_no_errors(self):
+        """Test that _errors() returns empty dict when there are no errors."""
+        self.extension.ledger.errors = []
+        
+        error_map = self.extension._errors()
+        
+        assert error_map == {}

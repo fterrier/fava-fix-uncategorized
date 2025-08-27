@@ -63,7 +63,7 @@ def fava_server(test_ledger):
         ['fava', str(test_ledger), '--port', str(port), '--host', '127.0.0.1'],
         env=env,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
+        stderr=subprocess.STDOUT  # Capture stderr to stdout so we can see errors
     )
     
     # Wait for server to start
