@@ -30,7 +30,7 @@ def test_ledger():
 
 2024-01-03 * "Salary Payment"
   Assets:Checking             2500.00 CHF
-  Income:Salary              -2500.00 CHF
+  Income:Salary              -2000.00 CHF
 
 2024-01-04 * "Gas Station" "Fuel"
   Assets:Checking              -65.00 CHF

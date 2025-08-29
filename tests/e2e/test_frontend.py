@@ -208,3 +208,69 @@ class TestFixUncategorizedFrontend:
         # Verify the order changed (Restaurants should now be first)
         first_account = first_txn.locator(".expense-account-input").first
         expect(first_account).to_have_value("Expenses:Family:Restaurants")
+
+    def test_error_display_for_unbalanced_transaction(self, page: Page, fava_server: str):
+        """Test that errors are displayed for unbalanced transactions."""
+        page.goto(f"{fava_server}/extension/FixUncategorized/")
+        
+        # Wait for transactions to load
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Uncheck the filter to show all transactions (including the salary with errors)
+        checkbox = page.locator("#only-uncategorized")
+        if checkbox.is_checked():
+            checkbox.uncheck()
+        
+        # Find the salary transaction by looking for the text "Salary Payment" in any transaction
+        salary_txn = page.locator(".txn-block").filter(has_text="Salary Payment")
+        expect(salary_txn).to_have_count(1)
+        
+        # The salary transaction should have the "error" class
+        expect(salary_txn).to_have_class("txn-block error")
+        
+        # Check for error message in the txn-error-message div
+        error_message_div = salary_txn.locator(".txn-error-message")
+        expect(error_message_div).to_be_visible()
+        
+        # Verify the error message content mentions balance issues
+        error_text = error_message_div.inner_text().lower()
+        assert any(keyword in error_text for keyword in ["balance", "imbalance", "sum"]), \
+            f"Error message should mention balance issue: {error_text}"
+
+    def test_save_multiple_modifications(self, page: Page, fava_server: str):
+        """Test that saving multiple times with different modifications works."""
+        page.goto(f"{fava_server}/extension/FixUncategorized/")
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        first_txn = page.locator(".txn-block.txn-unclassified").first
+        
+        # First modification: Set to Groceries
+        first_txn.locator(".expense-account-input").first.fill("Expenses:Family:Groceries")
+        first_txn.locator(".expense-amount").first.fill("150.00 CHF")
+        page.locator("#save-all-btn").click()
+        
+        # Wait for save to complete and reload data
+        page.wait_for_timeout(1000)
+        page.reload()
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Second modification: Change to Restaurants
+        first_txn = page.locator(".txn-block").filter(has_text="Grocery Store").first
+        first_txn.locator(".expense-account-input").first.fill("Expenses:Family:Restaurants")
+        expect(first_txn).to_have_class(re.compile(r".*txn-modified.*"))
+        page.locator("#save-all-btn").click()
+        
+        # Verify modifications persist
+        page.wait_for_timeout(1000)
+        page.reload()
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Should still be able to modify again
+        first_txn = page.locator(".txn-block").filter(has_text="Grocery Store").first
+        first_txn.locator(".expense-amount").first.clear()
+        first_txn.locator(".expense-amount").first.fill("175.00 CHF")
+        expect(first_txn).to_have_class(re.compile(r".*txn-modified.*"))
+        
+        # Verify the account field still has the expected value from second save
+        account_input = first_txn.locator(".expense-account-input").first
+        expect(account_input).to_have_value("Expenses:Family:Restaurants")
