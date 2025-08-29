@@ -10,6 +10,11 @@ from fava_fix_uncategorized import FixUncategorized
 class TestFixUncategorizedAPI:
     """Test the FixUncategorized API endpoints with real requests."""
 
+    def assert_transaction(self, txn, expected):
+        """Helper to assert transaction fields"""
+        for key, value in expected.items():
+            assert txn[key] == value
+
     @pytest.fixture
     def test_ledger_file(self):
         """Create a temporary beancount file for testing."""
@@ -28,17 +33,9 @@ class TestFixUncategorizedAPI:
   Assets:Checking              -150.00 CHF
   Expenses:Family:Unclassified  150.00 CHF
 
-2024-01-02 * "Restaurant" "Dinner out"
-  Assets:Checking              -80.50 CHF
-  Expenses:Family:Unclassified  80.50 CHF
-
-2024-01-03 * "Salary Payment"
+2024-02-03 * "Salary Payment"
   Assets:Checking             2500.00 CHF
-  Income:Salary              -2500.00 CHF
-
-2024-01-04 * "Gas Station" "Fuel"
-  Assets:Checking              -65.00 CHF
-  Expenses:Family:Unclassified  65.00 CHF
+  Income:Salary              -2000.00 CHF
 '''
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.beancount', delete=False) as f:
@@ -64,16 +61,16 @@ class TestFixUncategorizedAPI:
         """Test that expense_accounts returns the correct filtered accounts."""
         result = extension.expense_accounts()
         
-        # The actual accounts from our test beancount file should be filtered
-        # Should include Family and BusinessStukas expenses, but not Unclassified
-        assert isinstance(result, list)
+        # Should return exactly these accounts from our test beancount file
+        # (sorted, as per the implementation)
+        expected_accounts = [
+            "Expenses:BusinessStukas:Office",
+            "Expenses:Family:Groceries", 
+            "Expenses:Family:Restaurants",
+            "Income:BusinessStukas:Consulting"
+        ]
         
-        # Check that we get some accounts and they follow the expected pattern
-        for account in result:
-            assert (account.startswith("Expenses:Family:") or 
-                   account.startswith("Expenses:BusinessStukas:") or 
-                   account.startswith("Income:BusinessStukas:"))
-            assert not account.endswith("Unclassified")
+        assert result == expected_accounts
 
     def test_list_endpoint_returns_all_transactions(self, extension):
         """Test the list endpoint returns all transactions with proper structure."""
@@ -90,20 +87,37 @@ class TestFixUncategorizedAPI:
             transactions = data["transactions"]
             
             # Should have the expected number of transactions from our test data
-            assert len(transactions) == 4
+            assert len(transactions) == 2
+            transactions_by_date = {t["date"]: t for t in transactions}
             
-            # Check structure of first transaction if any exist
-            if transactions:
-                txn = transactions[0]
-                required_fields = ["lineno", "hash", "date", "narration", "payee", "errors", "postings", "unclassified"]
+            # Transaction 1: Grocery Store (2024-01-01)
+            self.assert_transaction(transactions_by_date["2024-01-01"], {
+                "date": "2024-01-01",
+                "narration": "Weekly groceries",
+                "payee": "Grocery Store",
+                "errors": None,
+                "unclassified": True,
+                "postings": [{"account": "Assets:Checking", "amount": "-150.00 CHF", "editable": False}]
+            })
+            
+            # Transaction 2: Salary Payment (2024-02-03) - now unbalanced, will have errors
+            salary_txn = transactions_by_date["2024-02-03"]
+            self.assert_transaction(salary_txn, {
+                "date": "2024-02-03",
+                "narration": "Salary Payment",
+                "payee": "",
+                "unclassified": False,
+                "postings": [
+                    {"account": "Assets:Checking", "amount": "2500.00 CHF", "editable": False},
+                    {"account": "Income:Salary", "amount": "-2000.00 CHF", "editable": True}
+                ]
+            })
+            
+            # Check that all transactions have required structure
+            required_fields = ["lineno", "hash", "date", "narration", "payee", "errors", "postings", "unclassified"]
+            for txn in transactions:
                 for field in required_fields:
                     assert field in txn
-                
-                # Check postings structure
-                for posting in txn["postings"]:
-                    assert "account" in posting
-                    assert "amount" in posting
-                    assert "editable" in posting
 
     def test_list_endpoint_filters_by_time(self, extension):
         """Test the list endpoint filters transactions by time parameter."""
@@ -120,17 +134,31 @@ class TestFixUncategorizedAPI:
             all_transactions_count = len(transactions)
         
         # Test filtering to January 2024
-        with app.test_request_context('/?time=2024-01'):
+        with app.test_request_context('/?time=2024-02'):
             response = extension.list()
             data = json.loads(response.data)
             
             assert data["success"] is True
             transactions = data["transactions"]
+            transactions_by_date = {t["date"]: t for t in transactions}
+            
             # Should have same or fewer transactions when filtered
-            assert len(transactions) <= all_transactions_count
+            assert len(transactions) < all_transactions_count
+            
+            # Transaction 2: Salary Payment (2024-02-03) - now unbalanced
+            self.assert_transaction(transactions_by_date["2024-02-03"], {
+                "date": "2024-02-03",
+                "narration": "Salary Payment",
+                "payee": "",
+                "unclassified": False,
+                "postings": [
+                    {"account": "Assets:Checking", "amount": "2500.00 CHF", "editable": False},
+                    {"account": "Income:Salary", "amount": "-2000.00 CHF", "editable": True}
+                ]
+            })
 
     def test_list_endpoint_handles_errors_gracefully(self, extension):
-        """Test that the list endpoint handles error processing without breaking."""
+        """Test that the list endpoint properly attaches errors to transactions."""
         from flask import Flask
         app = Flask(__name__)
         
@@ -140,14 +168,21 @@ class TestFixUncategorizedAPI:
             
             assert data["success"] is True
             transactions = data["transactions"]
+            transactions_by_date = {t["date"]: t for t in transactions}
             
-            # Each transaction should have an errors field (even if None/empty)
-            for txn in transactions:
-                assert "errors" in txn
-                # errors field should be None or a list
-                assert txn["errors"] is None or isinstance(txn["errors"], list)
+            # The salary transaction (2024-02-03) should have an error due to unbalanced postings
+            salary_txn = transactions_by_date["2024-02-03"]
+            
+            # The unbalanced transaction should have an error attached
+            assert "errors" in salary_txn
+            assert len(salary_txn["errors"]) > 0, "Should have at least one error"
+            
+            # Check that the error message mentions the imbalance
+            error_messages = " ".join(salary_txn["errors"])
+            assert any(keyword in error_messages.lower() for keyword in ["balance", "imbalance", "sum"]), \
+                f"Error should mention balance/imbalance: {error_messages}"
 
-    def test_save_endpoint_validates_input(self, extension):
+    def test_save_endpoint_returns_error_when_hash_not_found(self, extension):
         """Test that the save endpoint validates input properly."""
         from flask import Flask
         app = Flask(__name__)
@@ -168,14 +203,55 @@ class TestFixUncategorizedAPI:
         }
         
         with app.test_request_context('/', json=test_data):
-            # This should not crash, even if the hash doesn't exist
-            try:
-                result = extension.save()
-                # If it doesn't find the entry, it should raise an error
-                assert result["success"] is False
-            except Exception:
-                # Or it might raise an exception, which is also acceptable
-                pass
+            result = extension.save()
+            # The result might be a tuple (dict, status_code) when there's an error
+            if isinstance(result, tuple):
+                result, status_code = result
+                assert status_code == 500
+            # If it doesn't find the entry, it should raise an error
+            assert result["success"] is False
+
+    def test_save_endpoint_rejects_invalid_postings(self, extension, test_ledger_file):
+        """Test that the save endpoint rejects invalid posting amounts."""
+        from flask import Flask
+        app = Flask(__name__)
+        
+        # Get original file content
+        original_content = test_ledger_file.read_text()
+        
+        # Get a real uncategorized transaction from the ledger first
+        with app.test_request_context('/'):
+            list_response = extension.list()
+            list_data = json.loads(list_response.data)
+            
+        # Find first uncategorized transaction
+        uncategorized_txns = [t for t in list_data["transactions"] if t["unclassified"]]
+        assert uncategorized_txns, "No uncategorized transactions found for testing"
+        uncategorized_txn = uncategorized_txns[0]
+        
+        # Test with invalid amount format
+        test_data = {
+            "transactions": [{
+                "hash": uncategorized_txn["hash"],
+                "lineno": uncategorized_txn["lineno"],
+                "postings": [
+                    {"account": "Expenses:Family:Groceries", "amount": "400 ABCD"}  # Invalid currency
+                ]
+            }]
+        }
+        
+        with app.test_request_context('/', json=test_data):
+            result = extension.save()
+            # Should succeed but skip the invalid posting and fall back to Unclassified
+            assert result["success"] is True
+            assert isinstance(result["data"], list)
+            
+            # Verify file was modified (invalid posting skipped, falls back to default)
+            modified_content = test_ledger_file.read_text()
+            assert modified_content != original_content, "File should be modified even with invalid posting"
+            # Should not contain the invalid currency but should have the fallback
+            assert "ABCD" not in modified_content, "Invalid currency should not appear in file"
+            assert "Expenses:Family:Unclassified" in modified_content, "Should fall back to Unclassified posting"
 
     def test_save_endpoint_with_valid_data(self, extension, test_ledger_file):
         """Test the save endpoint with valid transaction data and verify file modification."""
@@ -209,23 +285,14 @@ class TestFixUncategorizedAPI:
         
         # Attempt to save the transaction
         with app.test_request_context('/', json=save_data):
-            try:
-                result = extension.save()
-                
-                # Verify the response structure
-                assert "success" in result
-                if result["success"]:
-                    assert "data" in result
-                    assert isinstance(result["data"], list)
-                    assert len(result["data"]) == 1
-                    
-                    # Verify file was actually modified
-                    modified_content = test_ledger_file.read_text()
-                    assert modified_content != original_content, "File content should have changed after save"
-                    assert "Expenses:Family:Groceries" in modified_content, "New account should appear in file"
-                    
-            except Exception as e:
-                # If it fails due to file operations, that's expected in tests
-                error_msg = str(e)
-                assert any(msg in error_msg for msg in ["Failed to save", "not found", "readonly"]), \
-                    f"Unexpected error: {error_msg}"
+            result = extension.save()
+            
+            # Verify the response structure
+            assert result["success"] is True
+            assert isinstance(result["data"], list)
+            assert len(result["data"]) == 1
+            
+            # Verify file was actually modified
+            modified_content = test_ledger_file.read_text()
+            assert modified_content != original_content, "File content should have changed after save"
+            assert "Expenses:Family:Groceries" in modified_content, "New account should appear in file"
