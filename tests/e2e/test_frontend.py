@@ -274,3 +274,26 @@ class TestFixUncategorizedFrontend:
         # Verify the account field still has the expected value from second save
         account_input = first_txn.locator(".expense-account-input").first
         expect(account_input).to_have_value("Expenses:Family:Restaurants")
+
+    def test_save_with_enter_key(self, page: Page, fava_server: str):
+        """Test that pressing Enter while editing a posting triggers save."""
+        page.goto(f"{fava_server}/extension/FixUncategorized/")
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        first_txn = page.locator(".txn-block.txn-unclassified").first
+        
+        # Fill in account and amount, then press Enter on amount field
+        first_txn.locator(".expense-account-input").first.fill("Expenses:Family:Groceries")
+        amount_input = first_txn.locator(".expense-amount").first
+        amount_input.fill("150.00 CHF")
+        amount_input.press("Enter")
+        
+        # Wait and reload to verify save occurred
+        page.wait_for_timeout(1000)
+        page.reload()
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Verify the change persisted (transaction should now show the account)
+        saved_txn = page.locator(".txn-block").filter(has_text="Grocery Store").first
+        account_input = saved_txn.locator(".expense-account-input").first
+        expect(account_input).to_have_value("Expenses:Family:Groceries")

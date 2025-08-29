@@ -22,6 +22,16 @@ function createPostingRow(account = "", amount = "") {
 
   accountInput.addEventListener("input", markTxnModified);
   amountInput.addEventListener("input", markTxnModified);
+  
+  // Handle Enter key to trigger save
+  const handleEnterKey = (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      saveAllTransactions();
+    }
+  };
+  accountInput.addEventListener("keydown", handleEnterKey);
+  amountInput.addEventListener("keydown", handleEnterKey);
 
   // Awesomplete from UL list
   new Awesomplete(tr.querySelector(".account-select"), {
