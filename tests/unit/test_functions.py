@@ -1,5 +1,5 @@
 import pytest
-from fava_fix_uncategorized import normalize_and_validate_posting, replace_unclassified_posting
+from fava_fix_uncategorized import normalize_and_validate_posting, replace_unclassified_posting, change_narration
 
 
 class TestNormalizeAndValidatePosting:
@@ -140,3 +140,75 @@ class TestReplaceUnclassifiedPosting:
         assert not any("invalid_amount" in line for line in lines)
         # Should still add the unclassified line with 0 amount
         assert any("Expenses:Family:Unclassified 0 CHF" in line for line in lines)
+
+
+class TestChangeNarration:
+    """Test the change_narration function."""
+
+    def test_change_narration_with_narration(self):
+        """Test changing narration when transaction has both narration and payee."""
+        entry_str = '''2024-01-01 * "Payee" "Some Narration"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        
+        result = change_narration(entry_str, "New Narration")
+        
+        expected = '''2024-01-01 * "Payee" "New Narration"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        assert result == expected
+
+    def test_change_narration_without_narration(self):
+        """Test changing narration when transaction has no payee."""
+        entry_str = '''2024-01-01 * "Payee"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        
+        result = change_narration(entry_str, "New Narration")
+        
+        expected = '''2024-01-01 * "Payee" "New Narration"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        assert result == expected
+
+    def test_change_narration_empty_string(self):
+        """Test changing narration to empty string."""
+        entry_str = '''2024-01-01 * "Payee" "Old Narration"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        
+        result = change_narration(entry_str, "")
+        
+        expected = '''2024-01-01 * "Payee"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        assert result == expected
+
+    def test_change_narration_no_transaction_line(self):
+        """Test that function handles entries without proper transaction line."""
+        entry_str = '''Some invalid entry
+  Assets:Checking      -100.00 CHF'''
+        
+        result = change_narration(entry_str, "New Narration")
+        
+        # Should return unchanged if no * found
+        assert result == entry_str
+
+    def test_change_narration_empty_entry(self):
+        """Test that function handles empty entry string."""
+        entry_str = ""
+        
+        result = change_narration(entry_str, "New Narration")
+        
+        # Should return empty string unchanged
+        assert result == ""
+
+    def test_change_narration_malformed_quotes(self):
+        """Test handling of malformed quote structure."""
+        entry_str = '''2024-01-01 * "Unclosed quote
+  Assets:Checking      -100.00 CHF'''
+        
+        result = change_narration(entry_str, "New Narration")
+        
+        # Should return unchanged if quote structure is malformed
+        assert result == entry_str

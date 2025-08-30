@@ -122,6 +122,50 @@ def replace_unclassified_posting(entry_str, new_postings):
 
     return "\n".join(kept_lines + new_posting_lines)
 
+
+def change_narration(entry_str, new_narration):
+    """
+    Change the narration (second quoted string) in a transaction entry.
+    
+    Args:
+        entry_str (str): Original transaction text.
+        new_narration (str): New narration to set.
+    
+    Returns:
+        str: Modified transaction text with updated narration.
+    """
+    lines = entry_str.splitlines()
+    if not lines:
+        return entry_str
+    
+    first_line = lines[0]
+    if '*' not in first_line:
+        return entry_str
+    
+    # Parse transaction line: date * "payee" "narration"
+    parts = first_line.split('"')
+    
+    # Check if we have proper quote structure (even number means closed quotes)
+    if len(parts) % 2 == 0:
+        return entry_str  # Malformed quotes, return unchanged
+    
+    if len(parts) >= 4:
+        # Has both payee and narration: replace narration (index 3)
+        if new_narration == "":
+            # Remove narration entirely - keep only payee part and trim trailing space
+            lines[0] = '"'.join(parts[:3]).rstrip()
+        else:
+            parts[3] = new_narration
+            lines[0] = '"'.join(parts)
+    elif len(parts) >= 3:
+        # Has only payee: add narration if not empty
+        if new_narration:
+            # Insert narration: parts[0] + "payee" + parts[2] + " \"" + narration + "\""
+            lines[0] = '"'.join(parts[:3]) + ' "' + new_narration + '"'
+    
+    return "\n".join(lines)
+
+
 class FixUncategorized(FavaExtensionBase):
     report_title = "Fix Uncategorized"
     has_js_module = True
@@ -145,6 +189,11 @@ class FixUncategorized(FavaExtensionBase):
 
             slice_string, sha256sum = get_entry_slice(entry)
             new_string = replace_unclassified_posting(slice_string, txn["postings"])
+            
+            # Apply narration change if provided
+            new_narration = txn.get("narration")
+            if new_narration is not None:
+                new_string = change_narration(new_string, new_narration)
 
             try:
                 self.ledger.file.save_entry_slice(hash, new_string, sha256sum)
@@ -183,8 +232,8 @@ class FixUncategorized(FavaExtensionBase):
                 "lineno": txn.meta.get("lineno"),
                 "hash": hash_entry(txn),
                 "date": txn.date.isoformat(),
-                "narration": txn.narration,
-                "payee": txn.payee or "",
+                "narration": txn.narration if txn.payee else "",
+                "payee": txn.payee if txn.payee else txn.narration,
                 "errors": error_map.get(txn.meta.get("lineno")),
                 "postings": [
                     {

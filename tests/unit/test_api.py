@@ -33,7 +33,7 @@ class TestFixUncategorizedAPI:
   Assets:Checking              -150.00 CHF
   Expenses:Family:Unclassified  150.00 CHF
 
-2024-02-03 * "Salary Payment"
+2024-02-03 * "Employer Inc" "Monthly salary payment"
   Assets:Checking             2500.00 CHF
   Income:Salary              -2000.00 CHF
 '''
@@ -100,12 +100,12 @@ class TestFixUncategorizedAPI:
                 "postings": [{"account": "Assets:Checking", "amount": "-150.00 CHF", "editable": False}]
             })
             
-            # Transaction 2: Salary Payment (2024-02-03) - now unbalanced, will have errors
+            # Transaction 2: Employer Inc (2024-02-03)
             salary_txn = transactions_by_date["2024-02-03"]
             self.assert_transaction(salary_txn, {
                 "date": "2024-02-03",
-                "narration": "Salary Payment",
-                "payee": "",
+                "narration": "Monthly salary payment",
+                "payee": "Employer Inc",
                 "unclassified": False,
                 "postings": [
                     {"account": "Assets:Checking", "amount": "2500.00 CHF", "editable": False},
@@ -145,11 +145,11 @@ class TestFixUncategorizedAPI:
             # Should have same or fewer transactions when filtered
             assert len(transactions) < all_transactions_count
             
-            # Transaction 2: Salary Payment (2024-02-03) - now unbalanced
+            # Transaction 2: Employer Inc (2024-02-03)
             self.assert_transaction(transactions_by_date["2024-02-03"], {
                 "date": "2024-02-03",
-                "narration": "Salary Payment",
-                "payee": "",
+                "narration": "Monthly salary payment",
+                "payee": "Employer Inc",
                 "unclassified": False,
                 "postings": [
                     {"account": "Assets:Checking", "amount": "2500.00 CHF", "editable": False},
@@ -295,4 +295,48 @@ class TestFixUncategorizedAPI:
             # Verify file was actually modified
             modified_content = test_ledger_file.read_text()
             assert modified_content != original_content, "File content should have changed after save"
+            assert "Expenses:Family:Groceries" in modified_content, "New account should appear in file"
+
+    def test_save_endpoint_saves_narration_changes(self, extension, test_ledger_file):
+        """Test that the save endpoint saves narration changes when provided."""
+        from flask import Flask
+        app = Flask(__name__)
+        
+        # Get original file content
+        original_content = test_ledger_file.read_text()
+        
+        # Get a transaction from the ledger
+        with app.test_request_context('/'):
+            list_response = extension.list()
+            list_data = json.loads(list_response.data)
+        
+        # Get transactions by date
+        transactions_by_date = {t["date"]: t for t in list_data["transactions"]}
+        grocery_txn = transactions_by_date["2024-01-01"]  # Grocery Store transaction
+        
+        # Prepare save data with narration change
+        save_data = {
+            "transactions": [{
+                "hash": grocery_txn["hash"],
+                "lineno": grocery_txn["lineno"],
+                "postings": [
+                    {"account": "Expenses:Family:Groceries", "amount": "150.00 CHF"}
+                ],
+                "narration": "Updated weekly groceries shopping"
+            }]
+        }
+        
+        # Attempt to save the transaction
+        with app.test_request_context('/', json=save_data):
+            result = extension.save()
+            
+            # Verify the response structure
+            assert result["success"] is True
+            assert isinstance(result["data"], list)
+            assert len(result["data"]) == 1
+            
+            # Verify file was modified with new narration
+            modified_content = test_ledger_file.read_text()
+            assert modified_content != original_content, "File content should have changed after save"
+            assert "Updated weekly groceries shopping" in modified_content, "New narration should appear in file"
             assert "Expenses:Family:Groceries" in modified_content, "New account should appear in file"

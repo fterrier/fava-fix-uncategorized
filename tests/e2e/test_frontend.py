@@ -297,3 +297,45 @@ class TestFixUncategorizedFrontend:
         saved_txn = page.locator(".txn-block").filter(has_text="Grocery Store").first
         account_input = saved_txn.locator(".expense-account-input").first
         expect(account_input).to_have_value("Expenses:Family:Groceries")
+
+    def test_editable_narration(self, page: Page, fava_server: str):
+        """Test that narration can be edited by clicking on it and is saved."""
+        page.goto(f"{fava_server}/extension/FixUncategorized/")
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Find transaction with editable narration
+        first_txn = page.locator(".txn-block").first
+        narration_element = first_txn.locator(".txn-narration")
+        
+        # Should be visible and clickable
+        expect(narration_element).to_be_visible()
+        
+        # Click to edit narration
+        narration_element.click()
+        
+        # Should now have an input field
+        input_field = narration_element.locator("input")
+        expect(input_field).to_be_visible()
+        
+        # Change the narration
+        input_field.fill("Updated narration for testing")
+        input_field.press("Enter")
+        
+        # Should be marked as modified
+        expect(first_txn).to_have_class(re.compile(r".*txn-modified.*"))
+        
+        # The narration display should be updated
+        expect(narration_element).to_contain_text("Updated narration for testing")
+        
+        # Save the changes
+        page.locator("#save-all-btn").click()
+        
+        # Wait for save to complete and reload page to verify persistence
+        page.wait_for_timeout(1000)
+        page.reload()
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Find the same transaction and verify narration was saved
+        first_txn_after_reload = page.locator(".txn-block").first
+        narration_element_after_reload = first_txn_after_reload.locator(".txn-narration")
+        expect(narration_element_after_reload).to_contain_text("Updated narration for testing")

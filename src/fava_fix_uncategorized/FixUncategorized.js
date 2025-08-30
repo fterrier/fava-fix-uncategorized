@@ -1,18 +1,14 @@
 // @ts-check
+function markTxnModified(txnBlock) {
+  txnBlock.dataset.modified = "true";
+  txnBlock.classList.add("txn-modified");
+}
 
 function createPostingRow(account = "", amount = "") {
   const template = document.getElementById("posting-row-template");
   const row = template.content.cloneNode(true);
 
   const tr = row.querySelector("tr");
-
-  function markTxnModified() {
-    const parentTable = tr.closest(".txn-splits-table");
-    if (parentTable) {
-      parentTable.dataset.modified = "true";
-      tr.closest(".txn-block").classList.add("txn-modified");
-    }
-  }
   const accountInput = tr.querySelector(".account-col input");
   const amountInput = tr.querySelector(".amount-col input");
 
@@ -20,8 +16,12 @@ function createPostingRow(account = "", amount = "") {
   accountInput.value = account;
   amountInput.value = amount;
 
-  accountInput.addEventListener("input", markTxnModified);
-  amountInput.addEventListener("input", markTxnModified);
+  accountInput.addEventListener("input", (e) => {
+    markTxnModified(e.target.closest(".txn-block"));
+  });
+  amountInput.addEventListener("input", (e) => {
+    markTxnModified(e.target.closest(".txn-block"));
+  });
   
   // Handle Enter key to trigger save
   const handleEnterKey = (event) => {
@@ -41,25 +41,25 @@ function createPostingRow(account = "", amount = "") {
   });
 
   // Action buttons
-  tr.querySelector(".delete-btn").onclick = () => {
-    markTxnModified();
+  tr.querySelector(".delete-btn").onclick = (e) => {
+    markTxnModified(e.target.closest(".txn-block"));
     tr.remove();
   };
 
-  tr.querySelector(".add-below-btn").onclick = () => {
-    markTxnModified();
+  tr.querySelector(".add-below-btn").onclick = (e) => {
+    markTxnModified(e.target.closest(".txn-block"));
     const newRow = createPostingRow();
     tr.parentNode.insertBefore(newRow, tr.nextSibling);
   };
 
-  tr.querySelector(".move-up-btn").onclick = () => {
-    markTxnModified();
+  tr.querySelector(".move-up-btn").onclick = (e) => {
+    markTxnModified(e.target.closest(".txn-block"));
     const prev = tr.previousElementSibling;
     if (prev) tr.parentNode.insertBefore(tr, prev);
   };
 
-  tr.querySelector(".move-down-btn").onclick = () => {
-    markTxnModified();
+  tr.querySelector(".move-down-btn").onclick = (e) => {
+    markTxnModified(e.target.closest(".txn-block"));
     const next = tr.nextElementSibling;
     if (next && next !== tr) {
       tr.parentNode.insertBefore(next, tr);
@@ -67,6 +67,64 @@ function createPostingRow(account = "", amount = "") {
   };
 
   return tr;
+}
+
+function setupEditableNarration(block, narration) {
+  const narrationElement = block.querySelector(".txn-narration");
+  narrationElement.textContent = `${narration || "(no narration)"}`;
+
+  let originalValue = narration;
+  let isEditing = false;
+  narrationElement.addEventListener('click', () => {
+    if (isEditing) return;
+    
+    isEditing = true;
+    narrationElement.classList.add('editing');
+    
+    // Create input field
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = originalValue;
+    input.placeholder = 'Enter narration';
+    
+    // Replace content with input
+    narrationElement.innerHTML = '';
+    narrationElement.appendChild(input);
+    input.focus();
+    input.select();
+    
+    // Handle save/cancel
+    const finishEditing = (save = false) => {
+      if (!isEditing) return;
+      
+      isEditing = false;
+      narrationElement.classList.remove('editing');
+      
+      if (save && input.value !== originalValue) {        
+        // Mark transaction as modified
+        const txnBlock = narrationElement.closest('.txn-block');
+        markTxnModified(txnBlock);
+        
+        // Store the new narration value as data attribute
+        txnBlock.dataset.narration = input.value;
+      }
+      narrationElement.textContent = `${input.value || "(no narration)"}`;
+    };
+    
+    // Save on Enter, cancel on Escape
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        finishEditing(true);
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        finishEditing(false);
+      }
+    });
+    
+    // Save on blur
+    input.addEventListener('blur', () => finishEditing(true));
+  });
 }
 
 function renderTransaction(txn, index) {
@@ -86,9 +144,10 @@ function renderTransaction(txn, index) {
   }
 
   // Set the transaction title
-  const title = `${txn.date} - ${txn.narration}${txn.payee ? " * " + txn.payee : ""}`;
+  const title = `${txn.date} - ${txn.payee}`;
   block.querySelector(".txn-title").textContent = title;
-  block.querySelector(".txn-lineno").textContent = txn.lineno;
+  block.querySelector(".txn-lineno").textContent = txn.lineno;  
+  setupEditableNarration(block, txn.narration);
 
   // Show original postings
   const tbody = block.querySelector(".txn-splits-body");
@@ -142,13 +201,16 @@ function gatherModifiedTransactions() {
 
   txnBlocks.forEach((block) => {
     const table = block.querySelector(".txn-splits-table");
-    if (!table || table.dataset.modified !== "true") return;
+    if (block.dataset.modified !== "true") return;
 
     const lineno = parseInt(block.dataset.lineno, 10);
     const hash = block.dataset.hash;
     const postings = serializeSplitInputs(block);
+    
+    // Always include current narration (from data attribute or original)
+    const narration = block.dataset.narration;
 
-    modifiedTxns.push({ lineno, hash, postings });
+    modifiedTxns.push({ lineno, hash, postings, narration });
   });
 
   return modifiedTxns;
