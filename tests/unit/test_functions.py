@@ -212,3 +212,16 @@ class TestChangeNarration:
         
         # Should return unchanged if quote structure is malformed
         assert result == entry_str
+
+    def test_change_narration_strips_quotes(self):
+        """Test that quotes are stripped from the new narration."""
+        entry_str = '''2024-01-01 * "Payee" "Old Narration"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        
+        result = change_narration(entry_str, 'New "quoted" narration')
+        
+        expected = '''2024-01-01 * "Payee" "New quoted narration"
+  Assets:Checking      -100.00 CHF
+  Expenses:Food         100.00 CHF'''
+        assert result == expected

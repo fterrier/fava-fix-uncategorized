@@ -142,6 +142,10 @@ def change_narration(entry_str, new_narration):
     if '*' not in first_line:
         return entry_str
     
+    # Strip all double quotes from the new narration to prevent parsing issues
+    if new_narration:
+        new_narration = new_narration.replace('"', '')
+    
     # Parse transaction line: date * "payee" "narration"
     parts = first_line.split('"')
     

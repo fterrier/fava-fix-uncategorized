@@ -339,3 +339,99 @@ class TestFixUncategorizedFrontend:
         first_txn_after_reload = page.locator(".txn-block").first
         narration_element_after_reload = first_txn_after_reload.locator(".txn-narration")
         expect(narration_element_after_reload).to_contain_text("Updated narration for testing")
+
+    def test_narration_editing_edge_cases(self, page: Page, fava_server: str):
+        """Test edge cases for narration editing."""
+        page.goto(f"{fava_server}/extension/FixUncategorized/")
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        first_txn = page.locator(".txn-block").first
+        narration_element = first_txn.locator(".txn-narration")
+        
+        # Test 1: Edit narration and cancel with Escape
+        narration_element.click()
+        input_field = narration_element.locator("input")
+        input_field.fill("This should be cancelled")
+        input_field.press("Escape")
+        
+        # Should not be marked as modified after escape
+        expect(first_txn).not_to_have_class(re.compile(r".*txn-modified.*"))
+        
+        # Test 2: Edit with empty string
+        narration_element.click()
+        input_field = narration_element.locator("input")
+        input_field.fill("")
+        input_field.press("Enter")
+        
+        # Should be marked as modified even with empty string
+        expect(first_txn).to_have_class(re.compile(r".*txn-modified.*"))
+        expect(narration_element).to_contain_text("(no narration)")
+        
+        # Test 3: Edit with quotes and save (quotes will be stripped by backend)
+        narration_element.click()
+        input_field = narration_element.locator("input")
+        text_with_quotes = "Test with \"quotes\" and symbols"
+        input_field.fill(text_with_quotes)
+        input_field.press("Enter")
+        
+        expect(narration_element).to_contain_text(text_with_quotes)
+        
+        # Save the changes with quotes and verify no errors occur
+        page.locator("#save-all-btn").click()
+        
+        # Wait for save to complete
+        page.wait_for_timeout(1000)
+        
+        # Check that no error styling appeared on the transaction (most important check)
+        expect(first_txn).not_to_have_class("error")
+        
+        # Reload and verify the transaction was saved (quotes will be stripped by backend)
+        page.reload()
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Find the transaction by looking for the text without quotes (as backend strips them)
+        saved_txn = page.locator(".txn-block").filter(has_text="Test with quotes")
+        expect(saved_txn).to_have_count(1)  # Should find exactly one transaction
+        
+        narration_element_after_reload = saved_txn.locator(".txn-narration")
+        # Backend strips quotes, so we should see the text without quotes
+        expect(narration_element_after_reload).to_contain_text("Test with quotes and symbols")
+        
+        # Verify no error class on the reloaded transaction
+        expect(saved_txn).not_to_have_class("error")
+
+    def test_narration_editing_with_posting_changes(self, page: Page, fava_server: str):
+        """Test that narration editing works together with posting changes."""
+        page.goto(f"{fava_server}/extension/FixUncategorized/")
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Find uncategorized transaction
+        uncategorized_txn = page.locator(".txn-block.txn-unclassified").first
+        
+        # Change both narration and postings
+        narration_element = uncategorized_txn.locator(".txn-narration")
+        narration_element.click()
+        input_field = narration_element.locator("input")
+        input_field.fill("Combined test: narration and posting")
+        input_field.press("Enter")
+        
+        # Add posting
+        uncategorized_txn.locator(".expense-account-input").first.fill("Expenses:Family:Groceries")
+        uncategorized_txn.locator(".expense-amount").first.fill("150.00 CHF")
+        
+        # Should be marked as modified
+        expect(uncategorized_txn).to_have_class(re.compile(r".*txn-modified.*"))
+        
+        # Save and verify both changes persist
+        page.locator("#save-all-btn").click()
+        page.wait_for_timeout(1000)
+        page.reload()
+        page.wait_for_selector(".txn-block", timeout=5000)
+        
+        # Verify narration persisted
+        saved_txn = page.locator(".txn-block").filter(has_text="Combined test").first
+        expect(saved_txn.locator(".txn-narration")).to_contain_text("Combined test: narration and posting")
+        
+        # Verify posting persisted
+        account_input = saved_txn.locator(".expense-account-input").first
+        expect(account_input).to_have_value("Expenses:Family:Groceries")
